@@ -1,5 +1,5 @@
 # zqfHB
-    Php red envelope Extended
+    Php red envelope extension
 ### install zqfHB
     ./phpize
     ./configure --with-php-config=/usr/local/php/bin/php-config
