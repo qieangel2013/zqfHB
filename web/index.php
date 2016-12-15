@@ -7,6 +7,7 @@ switch ($type) {
         $zqfHB_idx = $redis->lrange('zqfHB',0,-1);
         foreach ($zqfHB_idx as $k => $v) {
             $slowlog = unserialize($v);
+            $slowlog['id']=$k;
             $data[ $slowlog['filename'] ][] = $slowlog;
         }
         break;
@@ -80,7 +81,7 @@ if($data){
                 text: 'PHP benchmark(平均执行时间)'
             },
             subtitle: {
-                text: '统计结果仅针对执行时间超过slowlog.slow_maxtime的数据',
+                text: '统计结果仅针对执行时间超过zqfHB.slow_maxtime的数据',
                 x: -20
             },
             tooltip: {
