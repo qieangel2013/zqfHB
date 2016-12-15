@@ -33,15 +33,13 @@ extern zend_module_entry zqfHB_module_entry;
 #else
 #	define PHP_ZQFHB_API
 #endif
-#if PHP_MAJOR_VERSION <7
-  static zval* zqf_get_datas(HashTable *ht){
-  zval **zqf_itemm;
-  zend_hash_get_current_data(ht,(void**)&zqf_itemm);
-  return zqf_itemm;
- }
-#else
-#define zqf_get_data zend_hash_get_current_data
-#endif
+ZEND_BEGIN_MODULE_GLOBALS(zqfHB)
+  long  slow_maxtime;
+  long  start;
+  long  type;/* 1代表redis，2代表memcache  */
+  char *host;
+  long port;
+ZEND_END_MODULE_GLOBALS(zqfHB)
 #ifdef ZTS
 #include "TSRM.h"
 #endif

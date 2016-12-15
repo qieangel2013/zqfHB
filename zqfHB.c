@@ -21,24 +21,64 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#include <stdio.h>
-#include <stdlib.h>
 #include "php.h"
 #include "php_ini.h"
-#include "ext/standard/info.h"
 #include "php_zqfHB.h"
+#include "ext/standard/php_string.h"
+#include "ext/standard/php_var.h"
+#include <stdio.h>
+#if PHP_MAJOR_VERSION <7 
+#include "ext/standard/php_smart_str.h"
+#include "./lib/php5/php_memcache.h"
+#else
+#include "ext/standard/php_smart_string.h"
+#endif
+#include <hiredis/hiredis.h>
+#include "ext/standard/basic_functions.h"
+#include "ext/standard/info.h"
+#include <sys/time.h>
 
 /* If you declare any globals in php_zqfHB.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(zqfHB)
 */
+typedef struct _zqfHBEntry
+{ 
+  //自增序号
+  long id;
 
+  //当前请求的GET
+  zval *GET;
+
+  //当前请求的POST
+  zval *POST;
+
+  //当前请求的COOKIE
+  zval *COOKIE;
+
+  //当前执行的PHP文件名
+  zval *filename;
+
+  //执行时间 1s=1000000
+  char duration[100];
+
+}zqfHBEntry;
 /* True global resources - no need for thread safety here */
+ZEND_DECLARE_MODULE_GLOBALS(zqfHB)
 static int le_zqfHB;
-ZEND_BEGIN_ARG_INFO_EX(zqfHB_hongbao_arginfo, 0, 0, 1)
-    ZEND_ARG_INFO(0,zqfmoney)
-    ZEND_ARG_INFO(0,zqfcount)
-    ZEND_ARG_INFO(0,zqftype)
-ZEND_END_ARG_INFO()
+static long ustime(void) {
+  // struct timeval{
+  //  long int tv_sec;  // 秒数
+  //  long int tv_usec; // 微秒数
+  // }
+    struct timeval tv;
+    long ust;
+
+    //获得当前精确时间（UNIX到现在的时间）
+    gettimeofday(&tv, NULL);
+    ust = ((long)tv.tv_sec)*1000000;
+    ust += tv.tv_usec;
+    return ust;
+}
 /* {{{ PHP_INI
  */
 /* Remove comments and fill if you need to have entries in php.ini
@@ -47,79 +87,245 @@ PHP_INI_BEGIN()
     STD_PHP_INI_ENTRY("zqfHB.global_string", "foobar", PHP_INI_ALL, OnUpdateString, global_string, zend_zqfHB_globals, zqfHB_globals)
 PHP_INI_END()
 */
+PHP_INI_BEGIN()
+    STD_PHP_INI_ENTRY("zqfHB.slow_maxtime",      "0", PHP_INI_ALL, OnUpdateLong, slow_maxtime, zend_zqfHB_globals, zqfHB_globals)
+    STD_PHP_INI_ENTRY("zqfHB.type",      "1", PHP_INI_ALL, OnUpdateLong, type, zend_zqfHB_globals, zqfHB_globals)
+    STD_PHP_INI_ENTRY("zqfHB.host",      "127.0.0.1", PHP_INI_ALL, OnUpdateString, host, zend_zqfHB_globals, zqfHB_globals)
+    STD_PHP_INI_ENTRY("zqfHB.port",      "6379", PHP_INI_ALL, OnUpdateLong, port, zend_zqfHB_globals, zqfHB_globals)
+PHP_INI_END()
 /* }}} */
-int my_rand(int min, int max)
-{
-    static int _seed = 0;
-    assert(max > min);
-
-    if (_seed == 0)
-    {
-        _seed = time(NULL);
-        srand(_seed);
-    }
-    int _rand = rand();
-    _rand = min + (int) ((double) ((double) (max) - (min) + 1.0) * ((_rand) / ((RAND_MAX) + 1.0)));
-    return _rand;
-}
 /* Remove the following function when you have successfully modified config.m4
    so that your module can be compiled into PHP, it exists only for testing
    purposes. */
+static void php_zqfHB_init_globals(zend_zqfHB_globals *zqfHB_globals)
+{
+  zqfHB_globals->slow_maxtime = 0;
+}
 /* Every user-visible function in PHP should document itself in the source */
 /* {{{ proto string confirm_zqfHB_compiled(string arg)
    Return a string to confirm that the module is compiled in */
-
-PHP_FUNCTION(hongbao)
-{
-	zval *zqfmoney;
-  double moneyss;
-  long zqfcount;
-  long zqftype=0;
-  const double min=0.01;
-  double safe_total;
-  double moneys;
-  int i;
-  if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "zl|l", &zqfmoney,&zqfcount,&zqftype) == FAILURE) {
-      php_error_docref(NULL TSRMLS_CC, E_WARNING, "参数不正确!!!");
-        RETURN_FALSE;
-    }
-    switch(Z_TYPE_P(zqfmoney)){
-      case IS_LONG:
-        moneyss=(double)Z_LVAL_P(zqfmoney);
-        break;
-      case IS_DOUBLE:
-        moneyss=((int)Z_DVAL_P(zqfmoney)*100)/100.0;
-       break;
-      default:
-        php_error_docref(NULL TSRMLS_CC, E_WARNING, "参数不正确!!!");
-        RETURN_FALSE;
-        break;
-    }
-    array_init(return_value);
-     if(zqftype){
-        moneys=((int)(moneyss*100/zqfcount))/100.0;
-        for (i = 0; i < zqfcount; ++i)
-       {
-          add_index_double(return_value,i,moneys);
-        }
-    }else{
-      for (i = 1; i < zqfcount; ++i)
-    {
-      safe_total=(moneyss-(zqfcount-i)*min)/(zqfcount-i);
-      moneys=my_rand((int)(min*100),(int)(safe_total*100))/100.0;
-      moneyss -=moneys;
-      add_index_double(return_value,i-1,moneys);
-    }
-  add_index_double(return_value,zqfcount-1,moneyss);
-    }
-}
 /* }}} */
 /* The previous line is meant for vim and emacs, so it can correctly fold and 
    unfold functions in source code. See the corresponding marks just before 
    function definition, where the functions purpose is also documented. Please 
    follow this convention for the convenience of others editing your code.
 */
+static zval * global_query(uint type, char *name, uint len TSRMLS_DC){
+  zval **globals, **ret;
 
+  switch(type){
+    case TRACK_VARS_POST:
+       #if PHP_MAJOR_VERSION <7  
+      (void) zend_hash_find(&EG(symbol_table),ZEND_STRS("_POST"), (void **)&globals);
+      #else
+      globals= zend_hash_str_find(&EG(symbol_table),ZEND_STRS("_POST"));
+      /*if ((globals= zend_hash_find(Z_ARRVAL_PP(globals), (zend_string *)name)) == NULL) {
+        globals= NULL;
+      }*/
+      #endif
+      break;
+    case TRACK_VARS_GET:
+      #if PHP_MAJOR_VERSION <7  
+      (void) zend_hash_find(&EG(symbol_table),ZEND_STRS("_GET"), (void **)&globals);
+      #else
+      globals= zend_hash_str_find(&EG(symbol_table),ZEND_STRS("_GET"));
+      /*if ((globals= zend_hash_find(Z_ARRVAL_PP(globals), (zend_string *)name)) == NULL) {
+        globals= NULL;
+      }*/
+      #endif
+      break;
+    case TRACK_VARS_COOKIE:
+      globals = &PG(http_globals)[type];
+      break;
+    case TRACK_VARS_SERVER:
+      #if PHP_MAJOR_VERSION <7
+      zend_is_auto_global(ZEND_STRL("_SERVER") TSRMLS_CC);
+      #else
+      globals = zend_hash_str_find(&EG(symbol_table), ZEND_STRL("_SERVER"));
+      #endif
+      globals = &PG(http_globals)[type];
+      break;
+    default :
+      break;
+  }
+
+  if (!globals || !(*globals)) {
+    #if PHP_MAJOR_VERSION <7
+    zval *empty;
+    MAKE_STD_ZVAL(empty);
+    ZVAL_NULL(empty);
+    return empty;
+    #else
+    zval empty;
+    return &empty;
+    #endif
+  }
+
+  //返回整个数组
+  if(!len){
+    Z_ADDREF_P(*globals);
+    return *globals;
+  }
+  #if PHP_MAJOR_VERSION <7 
+  //返回数组中的键值
+  if(zend_hash_find(Z_ARRVAL_PP(globals), name, len + 1, (void **)&ret) == FAILURE){
+    zval *empty;
+    MAKE_STD_ZVAL(empty);
+    ZVAL_NULL(empty);
+    return empty;
+  }
+  #else
+  if(ret=zend_hash_find(Z_ARRVAL_P(*globals), name) == NULL){
+    zval empty;
+    return &empty;
+  }
+  #endif
+  Z_ADDREF_P(*ret);
+  return *ret;
+}
+
+static char* zqfHBEntry_to_string(zqfHBEntry *log){
+  php_serialize_data_t var_hash;
+  #if PHP_MAJOR_VERSION <7 
+  zval *arr;
+  smart_str buf = {0};
+  MAKE_STD_ZVAL(arr);
+  #else
+  zval arr;
+  smart_string buf = {0};
+  #endif
+  
+  
+  #if PHP_MAJOR_VERSION <7 
+  array_init(arr);
+
+  add_assoc_zval(arr, "GET", log->GET);
+  add_assoc_zval(arr, "POST", log->POST);
+  add_assoc_zval(arr, "COOKIE", log->COOKIE);
+  add_assoc_long(arr, "id", log->id);
+  add_assoc_stringl(arr, "duration", log->duration, strlen(log->duration), 1);
+  add_assoc_zval(arr, "filename", log->filename);
+  #else
+  array_init(&arr);
+  add_assoc_zval(&arr, "GET", log->GET);
+  add_assoc_zval(&arr, "POST", log->POST);
+  add_assoc_zval(&arr, "COOKIE", log->COOKIE);
+  add_assoc_long(&arr, "id", log->id);
+  add_assoc_stringl(&arr, "duration", log->duration, strlen(log->duration));
+  add_assoc_zval(&arr, "filename", log->filename);
+  #endif
+  
+
+  Z_ADDREF_P(log->POST);
+  Z_ADDREF_P(log->GET);
+  Z_ADDREF_P(log->COOKIE);
+  Z_ADDREF_P(log->filename);
+
+  PHP_VAR_SERIALIZE_INIT(var_hash);
+  php_var_serialize(&buf, &arr, &var_hash TSRMLS_CC);
+  PHP_VAR_SERIALIZE_DESTROY(var_hash);
+
+  if(buf.c){
+    return buf.c;
+  }else{
+    return NULL;
+  }
+}
+
+
+/*static void memcazqf(long duration,char *host ,long port){
+  zend_function *func;
+   zval *return_value;
+    mmc_pool_t *pool;
+    char *value, zqfHB_idx[100];
+    mmc_t *mmc;
+    int errnum;
+    char *error_string;
+
+    MAKE_STD_ZVAL(return_value);
+    mmc = mmc_server_new(host, strlen(host), port, 0, 1, MMC_DEFAULT_RETRY TSRMLS_CC);
+    mmc->timeout = 1;
+    mmc->connect_timeoutms = 1000;
+
+    if(mmc_open(mmc, 1, &error_string, &errnum TSRMLS_CC)){
+      zqfHBEntry current_log;
+      char new_slowkey[100];
+      char *strval;
+
+      //获取$_SERVER['PHP_SELF']
+      current_log.filename = global_query(TRACK_VARS_SERVER, "PHP_SELF", sizeof("PHP_SELF") - 1);
+      //获取$_COOKIE
+      current_log.COOKIE   = global_query(TRACK_VARS_COOKIE, NULL, 0);
+      //获取$_GET
+      current_log.GET   = global_query(TRACK_VARS_GET, NULL, 0);
+      //获取$_POST
+      current_log.POST   = global_query(TRACK_VARS_POST, NULL, 0);
+
+      pool = mmc_pool_new(TSRMLS_C);
+      mmc_pool_add(pool, mmc, 1);
+
+      sprintf(current_log.duration, "%ld", duration);
+
+      mmc_exec_retrieval_cmd(pool, "zqfHB_idx", 11, &return_value, NULL TSRMLS_CC);
+
+      convert_to_long(return_value);
+      current_log.id = Z_LVAL_P(return_value)+1;
+      sprintf(new_slowkey, "slowlog_%ld", current_log.id);
+      sprintf(zqfHB_idx, "%ld", current_log.id);
+
+      strval = slowlogEntry_to_string(&current_log);
+
+      //将slowlogEntry序列化后存储到memcache
+      mmc_pool_store(
+          pool, "set", 3, new_slowkey, strlen(new_slowkey), 0, 0, strval, strlen(strval) TSRMLS_CC);
+
+      //设置自增号
+      mmc_pool_store(
+          pool, "set", 3, "zqfHB_idx", 11, 0, 0, 
+          zqfHB_idx, strlen(zqfHB_idx) TSRMLS_CC);
+  #ifdef DEBUG
+      php_printf("insert zqfHB, key : %s\n", new_slowkey);
+  #endif
+      
+    }
+
+}
+*/
+
+static void rediszqf(long duration,char *host ,long port){
+    zend_function *func;
+    char *value;
+    char tmpzqf[256];
+    zqfHBEntry current_log;
+/*    #if PHP_MAJOR_VERSION <7 
+    zval *return_value;
+    MAKE_STD_ZVAL(return_value);
+    #else
+    zval return_value;
+    #endif
+*/
+    redisContext *c = redisConnect(host,port);
+    if (c->err)  
+    {  
+        redisFree(c);
+        php_error_docref(NULL TSRMLS_CC, E_WARNING,"Connect to redisServer faile\n");
+    }  
+      char *strval;        
+      //获取$_SERVER['PHP_SELF']
+      current_log.filename = global_query(TRACK_VARS_SERVER, "PHP_SELF", sizeof("PHP_SELF") - 1);
+      //获取$_COOKIE
+      current_log.COOKIE   = global_query(TRACK_VARS_COOKIE, NULL, 0);
+      //获取$_GET
+      current_log.GET   = global_query(TRACK_VARS_GET, NULL, 0);
+      //获取$_POST
+      current_log.POST   = global_query(TRACK_VARS_POST, NULL, 0);
+      sprintf(current_log.duration, "%ld", duration);
+      strval = zqfHBEntry_to_string(&current_log);
+      redisReply* r = (redisReply*)redisCommand(c,tmpzqf);  
+      freeReplyObject(r);  
+      redisFree(c);
+      efree(tmpzqf);
+  }
 
 /* {{{ php_zqfHB_init_globals
  */
@@ -136,9 +342,9 @@ static void php_zqfHB_init_globals(zend_zqfHB_globals *zqfHB_globals)
  */
 PHP_MINIT_FUNCTION(zqfHB)
 {
-	/* If you have INI entries, uncomment these lines 
+	/* If you have INI entries, uncomment these lines */
 	REGISTER_INI_ENTRIES();
-	*/
+	
 	return SUCCESS;
 }
 /* }}} */
@@ -147,9 +353,9 @@ PHP_MINIT_FUNCTION(zqfHB)
  */
 PHP_MSHUTDOWN_FUNCTION(zqfHB)
 {
-	/* uncomment this line if you have INI entries
+	/* uncomment this line if you have INI entries*/
 	UNREGISTER_INI_ENTRIES();
-	*/
+	
 	return SUCCESS;
 }
 /* }}} */
@@ -159,15 +365,35 @@ PHP_MSHUTDOWN_FUNCTION(zqfHB)
  */
 PHP_RINIT_FUNCTION(zqfHB)
 {
+  ZQFHB_G(start) = ustime();
 	return SUCCESS;
 }
 /* }}} */
+
+
 
 /* Remove if there's nothing to do at request end */
 /* {{{ PHP_RSHUTDOWN_FUNCTION
  */
 PHP_RSHUTDOWN_FUNCTION(zqfHB)
 {
+  long end = ustime(), duration;
+
+  duration = end - ZQFHB_G(start);
+
+  if(duration > ZQFHB_G(slow_maxtime)){
+    switch(ZQFHB_G(type)){
+      case 1:
+        rediszqf(duration,ZQFHB_G(host),ZQFHB_G(port));
+        break;
+      case 2:
+        //memcazqf(duration,ZQFHB_G(host),ZQFHB_G(port));
+       break;
+      default:
+        php_error_docref(NULL TSRMLS_CC, E_WARNING, "参数不正确!!!");
+        break;
+    }
+   }
 	return SUCCESS;
 }
 /* }}} */
@@ -182,7 +408,7 @@ PHP_MINFO_FUNCTION(zqfHB)
 	php_info_print_table_row(2, "Author", "qieangel2013");
 	php_info_print_table_row(2, "adress", "904208360@qq.com");
 	php_info_print_table_end();
-
+  DISPLAY_INI_ENTRIES();
 	/* Remove comments if you have entries in php.ini
 	DISPLAY_INI_ENTRIES();
 	*/
@@ -194,7 +420,6 @@ PHP_MINFO_FUNCTION(zqfHB)
  * Every user visible function must have an entry in zqfHB_functions[].
  */
 const zend_function_entry zqfHB_functions[] = {
-	PHP_FE(hongbao,	zqfHB_hongbao_arginfo)		/* For testing, remove later. */
 	PHP_FE_END	/* Must be the last line in zqfHB_functions[] */
 };
 /* }}} */
