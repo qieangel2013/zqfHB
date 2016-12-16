@@ -33,8 +33,8 @@
 	zqfHB.host=192.168.102.163
 	zqfHB.port=6379
 ###use:
-       需要把web里的所有文件复制到网站目录下，网站统计可以不在一起
-       直接执行http://localhost/web/
+	需要把web里的所有文件复制到网站目录下，网站统计可以不在一起
+	直接执行http://localhost/web/
 ###效果图
 ![](https://github.com/qieangel2013/zqfHB/blob/master/images/img1.png)
 ![](https://github.com/qieangel2013/zqfHB/blob/master/images/img2.png)
