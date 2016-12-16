@@ -37,6 +37,7 @@ ZEND_BEGIN_MODULE_GLOBALS(zqfHB)
   long  slow_maxtime;
   long  start;
   long  type;/* 1代表redis，2代表memcache  */
+  char *auth;
   char *host;
   long port;
 ZEND_END_MODULE_GLOBALS(zqfHB)

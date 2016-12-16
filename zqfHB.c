@@ -90,6 +90,7 @@ PHP_INI_END()
 PHP_INI_BEGIN()
     STD_PHP_INI_ENTRY("zqfHB.slow_maxtime",      "0", PHP_INI_ALL, OnUpdateLong, slow_maxtime, zend_zqfHB_globals, zqfHB_globals)
     STD_PHP_INI_ENTRY("zqfHB.type",      "1", PHP_INI_ALL, OnUpdateLong, type, zend_zqfHB_globals, zqfHB_globals)
+    STD_PHP_INI_ENTRY("zqfHB.auth",      "", PHP_INI_ALL, OnUpdateString, auth, zend_zqfHB_globals, zqfHB_globals)
     STD_PHP_INI_ENTRY("zqfHB.host",      "127.0.0.1", PHP_INI_ALL, OnUpdateString, host, zend_zqfHB_globals, zqfHB_globals)
     STD_PHP_INI_ENTRY("zqfHB.port",      "6379", PHP_INI_ALL, OnUpdateLong, port, zend_zqfHB_globals, zqfHB_globals)
 PHP_INI_END()
@@ -297,6 +298,7 @@ static void rediszqf(long duration,char *host ,long port){
     char *value;
     char tmpzqf[256];
     zqfHBEntry current_log;
+    redisReply* r;
 /*    #if PHP_MAJOR_VERSION <7 
     zval *return_value;
     MAKE_STD_ZVAL(return_value);
@@ -310,6 +312,7 @@ static void rediszqf(long duration,char *host ,long port){
         redisFree(c);
         php_error_docref(NULL TSRMLS_CC, E_WARNING,"Connect to redisServer faile\n");
     }  
+    
       char *strval;        
       //获取$_SERVER['PHP_SELF']
       current_log.filename = global_query(TRACK_VARS_SERVER, "PHP_SELF", sizeof("PHP_SELF") - 1);
@@ -321,7 +324,14 @@ static void rediszqf(long duration,char *host ,long port){
       current_log.POST   = global_query(TRACK_VARS_POST, NULL, 0);
       sprintf(current_log.duration, "%ld", duration);
       strval = zqfHBEntry_to_string(&current_log);
-      redisReply* r = (redisReply*)redisCommand(c,tmpzqf);  
+      if(ZQFHB_G(auth)[0] !='\0'){
+        sprintf(tmpzqf, "auth %s",ZQFHB_G(auth));
+        r = (redisReply*)redisCommand(c,tmpzqf);
+        //php_printf("get的redis的AUTH：'%s' \r\n",tmpzqf);
+      }
+      sprintf(tmpzqf, "lpush zqfHB %s",strval);
+      //php_printf("get的redis的COMAND：'%s' \r\n",tmpzqf);
+      r = (redisReply*)redisCommand(c,tmpzqf);
       freeReplyObject(r);  
       redisFree(c);
       efree(tmpzqf);

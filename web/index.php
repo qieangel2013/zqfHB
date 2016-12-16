@@ -4,6 +4,9 @@ switch ($type) {
     case 1:
         $redis = new Redis();
         $redis->connect(ini_get('zqfHB.host'),ini_get('zqfHB.port'));
+        if(ini_get('zqfHB.auth')){
+        	$redis->auth(ini_get('zqfHB.auth'));
+        }
         $zqfHB_idx = $redis->lrange('zqfHB',0,-1);
         foreach ($zqfHB_idx as $k => $v) {
             $slowlog = unserialize($v);
@@ -78,7 +81,7 @@ if($data){
                 plotShadow: false
             },
             title: {
-                text: 'PHP benchmark(平均执行时间)'
+                text: 'PHP zqfHB(平均执行时间)'
             },
             subtitle: {
                 text: '统计结果仅针对执行时间超过zqfHB.slow_maxtime的数据',
