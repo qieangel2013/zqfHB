@@ -41,6 +41,23 @@ ZEND_BEGIN_MODULE_GLOBALS(zqfHB)
   char *host;
   long port;
 ZEND_END_MODULE_GLOBALS(zqfHB)
+
+#if PHP_MAJOR_VERSION <7 
+#else
+static inline int zqf_zend_hash_find(HashTable *ht, char *k, int len, void **v)
+{
+    zval *value = zend_hash_str_find(ht, k, len - 1);
+    if (value == NULL)
+    {
+        return FAILURE;
+    }
+    else
+    {
+        *v = (void *) value;
+        return SUCCESS;
+    }
+}
+#endif
 #ifdef ZTS
 #include "TSRM.h"
 #endif

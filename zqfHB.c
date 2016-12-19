@@ -32,6 +32,7 @@
 #include "./lib/php5/php_memcache.h"
 #else
 #include "ext/standard/php_smart_string.h"
+//#include "ext/json/php_json.h"
 #endif
 #include <hiredis/hiredis.h>
 #include "ext/standard/basic_functions.h"
@@ -44,7 +45,7 @@ ZEND_DECLARE_MODULE_GLOBALS(zqfHB)
 typedef struct _zqfHBEntry
 { 
   //自增序号
-  long id;
+  //long id;
 
   //当前请求的GET
   zval *GET;
@@ -62,6 +63,8 @@ typedef struct _zqfHBEntry
   char duration[100];
 
 }zqfHBEntry;
+redisReply* r;
+redisContext *c;
 /* True global resources - no need for thread safety here */
 ZEND_DECLARE_MODULE_GLOBALS(zqfHB)
 static int le_zqfHB;
@@ -111,39 +114,22 @@ static void php_zqfHB_init_globals(zend_zqfHB_globals *zqfHB_globals)
    function definition, where the functions purpose is also documented. Please 
    follow this convention for the convenience of others editing your code.
 */
+#if PHP_MAJOR_VERSION <7 
 static zval * global_query(uint type, char *name, uint len TSRMLS_DC){
   zval **globals, **ret;
 
   switch(type){
     case TRACK_VARS_POST:
-       #if PHP_MAJOR_VERSION <7  
       (void) zend_hash_find(&EG(symbol_table),ZEND_STRS("_POST"), (void **)&globals);
-      #else
-      globals= zend_hash_str_find(&EG(symbol_table),ZEND_STRS("_POST"));
-      /*if ((globals= zend_hash_find(Z_ARRVAL_PP(globals), (zend_string *)name)) == NULL) {
-        globals= NULL;
-      }*/
-      #endif
       break;
     case TRACK_VARS_GET:
-      #if PHP_MAJOR_VERSION <7  
       (void) zend_hash_find(&EG(symbol_table),ZEND_STRS("_GET"), (void **)&globals);
-      #else
-      globals= zend_hash_str_find(&EG(symbol_table),ZEND_STRS("_GET"));
-      /*if ((globals= zend_hash_find(Z_ARRVAL_PP(globals), (zend_string *)name)) == NULL) {
-        globals= NULL;
-      }*/
-      #endif
       break;
     case TRACK_VARS_COOKIE:
       globals = &PG(http_globals)[type];
       break;
     case TRACK_VARS_SERVER:
-      #if PHP_MAJOR_VERSION <7
       zend_is_auto_global(ZEND_STRL("_SERVER") TSRMLS_CC);
-      #else
-      globals = zend_hash_str_find(&EG(symbol_table), ZEND_STRL("_SERVER"));
-      #endif
       globals = &PG(http_globals)[type];
       break;
     default :
@@ -151,15 +137,10 @@ static zval * global_query(uint type, char *name, uint len TSRMLS_DC){
   }
 
   if (!globals || !(*globals)) {
-    #if PHP_MAJOR_VERSION <7
     zval *empty;
     MAKE_STD_ZVAL(empty);
     ZVAL_NULL(empty);
     return empty;
-    #else
-    zval empty;
-    return &empty;
-    #endif
   }
 
   //返回整个数组
@@ -167,7 +148,6 @@ static zval * global_query(uint type, char *name, uint len TSRMLS_DC){
     Z_ADDREF_P(*globals);
     return *globals;
   }
-  #if PHP_MAJOR_VERSION <7 
   //返回数组中的键值
   if(zend_hash_find(Z_ARRVAL_PP(globals), name, len + 1, (void **)&ret) == FAILURE){
     zval *empty;
@@ -175,57 +155,29 @@ static zval * global_query(uint type, char *name, uint len TSRMLS_DC){
     ZVAL_NULL(empty);
     return empty;
   }
-  #else
-  if(ret=zend_hash_find(Z_ARRVAL_P(*globals), name) == NULL){
-    zval empty;
-    return &empty;
-  }
-  #endif
   Z_ADDREF_P(*ret);
   return *ret;
 }
 
 static char* zqfHBEntry_to_string(zqfHBEntry *log){
-  php_serialize_data_t var_hash;
-  #if PHP_MAJOR_VERSION <7 
+php_serialize_data_t var_hash;
   zval *arr;
   smart_str buf = {0};
   MAKE_STD_ZVAL(arr);
-  #else
-  zval arr;
-  smart_string buf = {0};
-  #endif
-  
-  
-  #if PHP_MAJOR_VERSION <7 
   array_init(arr);
-
   add_assoc_zval(arr, "GET", log->GET);
   add_assoc_zval(arr, "POST", log->POST);
   add_assoc_zval(arr, "COOKIE", log->COOKIE);
-  add_assoc_long(arr, "id", log->id);
+  //add_assoc_long(arr, "id", log->id);
   add_assoc_stringl(arr, "duration", log->duration, strlen(log->duration), 1);
   add_assoc_zval(arr, "filename", log->filename);
-  #else
-  array_init(&arr);
-  add_assoc_zval(&arr, "GET", log->GET);
-  add_assoc_zval(&arr, "POST", log->POST);
-  add_assoc_zval(&arr, "COOKIE", log->COOKIE);
-  add_assoc_long(&arr, "id", log->id);
-  add_assoc_stringl(&arr, "duration", log->duration, strlen(log->duration));
-  add_assoc_zval(&arr, "filename", log->filename);
-  #endif
-  
-
   Z_ADDREF_P(log->POST);
   Z_ADDREF_P(log->GET);
   Z_ADDREF_P(log->COOKIE);
   Z_ADDREF_P(log->filename);
-
   PHP_VAR_SERIALIZE_INIT(var_hash);
   php_var_serialize(&buf, &arr, &var_hash TSRMLS_CC);
   PHP_VAR_SERIALIZE_DESTROY(var_hash);
-
   if(buf.c){
     return buf.c;
   }else{
@@ -233,6 +185,73 @@ static char* zqfHBEntry_to_string(zqfHBEntry *log){
   }
 }
 
+#else
+static zval * global_query_p7(uint type, char *name, uint len){
+  zval *globals, *ret;
+
+  switch(type){
+    case TRACK_VARS_POST:
+      globals=zend_hash_str_find(&EG(symbol_table),ZEND_STRS("_POST"));
+      //globals = &PG(http_globals)[type];
+      break;
+    case TRACK_VARS_GET:
+      globals=zend_hash_str_find(&EG(symbol_table),ZEND_STRS("_GET"));
+      //globals = &PG(http_globals)[type];
+      break;
+    case TRACK_VARS_COOKIE:
+      globals=zend_hash_str_find(&EG(symbol_table),ZEND_STRS("_COOKIE"));
+      //globals = &PG(http_globals)[type];
+      break;
+    case TRACK_VARS_SERVER:
+      globals = &PG(http_globals)[type];
+      break;
+    default :
+      break;
+  }
+  if (!globals) {
+    zval empty;
+    return &empty;
+  }
+
+  if (!len) {
+    return globals;
+  }
+
+  if((ret=zend_hash_str_find(Z_ARRVAL_P(globals), name,len)) == NULL){
+    return NULL;
+  }
+  return ret;
+}
+
+static char* zqfHBEntry_to_string_p7(zqfHBEntry *log){
+  php_serialize_data_t var_hash;
+  smart_str buf = {0};
+  zval arr;
+    array_init(&arr);
+    add_assoc_zval(&arr, "GET", log->GET);
+    add_assoc_zval(&arr, "POST", log->POST);
+    add_assoc_zval(&arr, "COOKIE", log->COOKIE);
+    //add_assoc_long(&arr, "id", log->id);
+    add_assoc_string(&arr, "duration", log->duration);
+    add_assoc_zval(&arr, "filename", log->filename);
+    Z_TRY_ADDREF_P(log->GET);
+    Z_TRY_ADDREF_P(log->POST);
+    Z_TRY_ADDREF_P(log->COOKIE);
+    Z_TRY_ADDREF_P(log->filename);
+  PHP_VAR_SERIALIZE_INIT(var_hash);
+  php_var_serialize(&buf, &arr, &var_hash);
+  PHP_VAR_SERIALIZE_DESTROY(var_hash);
+  //php_json_encode(&buf, &arr, 0 TSRMLS_CC);
+  //php_printf("get的buttf：'%s' \r\n",log->filename);
+  if(buf.s){
+    return estrndup(ZSTR_VAL(buf.s), ZSTR_LEN(buf.s));
+    //return buf.s;
+  }
+  smart_str_free(&buf);
+  return NULL;
+}
+
+#endif
 
 /*static void memcazqf(long duration,char *host ,long port){
   zend_function *func;
@@ -293,28 +312,14 @@ static char* zqfHBEntry_to_string(zqfHBEntry *log){
 }
 */
 
-static void rediszqf(long duration,char *host ,long port){
+static void rediszqf(long duration){
     zend_function *func;
     char *value;
     char tmpzqf[256];
     zqfHBEntry current_log;
-    redisReply* r;
-/*    #if PHP_MAJOR_VERSION <7 
-    zval *return_value;
-    MAKE_STD_ZVAL(return_value);
-    #else
-    zval return_value;
-    #endif
-*/
-    redisContext *c = redisConnect(host,port);
-    if (c->err)  
-    {  
-        redisFree(c);
-        php_error_docref(NULL TSRMLS_CC, E_WARNING,"Connect to redisServer faile\n");
-    }  
-    
-      char *strval;        
+    char *strval;        
       //获取$_SERVER['PHP_SELF']
+      #if PHP_MAJOR_VERSION <7 
       current_log.filename = global_query(TRACK_VARS_SERVER, "PHP_SELF", sizeof("PHP_SELF") - 1);
       //获取$_COOKIE
       current_log.COOKIE   = global_query(TRACK_VARS_COOKIE, NULL, 0);
@@ -324,6 +329,17 @@ static void rediszqf(long duration,char *host ,long port){
       current_log.POST   = global_query(TRACK_VARS_POST, NULL, 0);
       sprintf(current_log.duration, "%ld", duration);
       strval = zqfHBEntry_to_string(&current_log);
+      #else
+      current_log.filename = global_query_p7(TRACK_VARS_SERVER, "PHP_SELF", sizeof("PHP_SELF") - 1);
+           //获取$_COOKIE
+      current_log.COOKIE   = global_query_p7(TRACK_VARS_COOKIE, NULL, 0);
+      //获取$_GET
+      current_log.GET   = global_query_p7(TRACK_VARS_GET, NULL,0);
+      //获取$_POST
+      current_log.POST   = global_query_p7(TRACK_VARS_POST, NULL, 0);
+      sprintf(current_log.duration, "%ld", duration);
+      strval = zqfHBEntry_to_string_p7(&current_log);
+      #endif
       if(ZQFHB_G(auth)[0] !='\0'){
         sprintf(tmpzqf, "auth %s",ZQFHB_G(auth));
         r = (redisReply*)redisCommand(c,tmpzqf);
@@ -333,8 +349,9 @@ static void rediszqf(long duration,char *host ,long port){
       //php_printf("get的redis的COMAND：'%s' \r\n",tmpzqf);
       r = (redisReply*)redisCommand(c,tmpzqf);
       freeReplyObject(r);  
-      redisFree(c);
+      #if PHP_MAJOR_VERSION <7 
       efree(tmpzqf);
+      #endif
   }
 
 /* {{{ php_zqfHB_init_globals
@@ -354,7 +371,12 @@ PHP_MINIT_FUNCTION(zqfHB)
 {
 	/* If you have INI entries, uncomment these lines */
 	REGISTER_INI_ENTRIES();
-	
+  c = redisConnect(ZQFHB_G(host),ZQFHB_G(port));
+    if (c->err)  
+    {  
+        redisFree(c);
+        //php_error_docref(NULL TSRMLS_CC, E_WARNING,"Connect to redisServer faile\n");
+    }  
 	return SUCCESS;
 }
 /* }}} */
@@ -365,7 +387,7 @@ PHP_MSHUTDOWN_FUNCTION(zqfHB)
 {
 	/* uncomment this line if you have INI entries*/
 	UNREGISTER_INI_ENTRIES();
-	
+	redisFree(c);
 	return SUCCESS;
 }
 /* }}} */
@@ -394,7 +416,7 @@ PHP_RSHUTDOWN_FUNCTION(zqfHB)
   if(duration > ZQFHB_G(slow_maxtime)){
     switch(ZQFHB_G(type)){
       case 1:
-        rediszqf(duration,ZQFHB_G(host),ZQFHB_G(port));
+        rediszqf(duration);
         break;
       case 2:
         //memcazqf(duration,ZQFHB_G(host),ZQFHB_G(port));

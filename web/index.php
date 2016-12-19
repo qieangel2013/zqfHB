@@ -9,9 +9,11 @@ switch ($type) {
         }
         $zqfHB_idx = $redis->lrange('zqfHB',0,-1);
         foreach ($zqfHB_idx as $k => $v) {
-            $slowlog = unserialize($v);
-            $slowlog['id']=$k;
-            $data[ $slowlog['filename'] ][] = $slowlog;
+            if($v){
+                $slowlog = unserialize($v);
+                $slowlog['id']=$k;
+                $data[ $slowlog['filename'] ][] = $slowlog;
+            } 
         }
         break;
     case 2:
