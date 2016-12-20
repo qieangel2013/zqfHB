@@ -1,12 +1,14 @@
 <?php
-$type=ini_get('zqfHB.type');
-switch ($type) {
-    case 1:
+//$type=ini_get('zqfHB.type');
+//switch ($type) {
+    //case 1:
         $redis = new Redis();
-        $redis->connect(ini_get('zqfHB.host'),ini_get('zqfHB.port'));
-        if(ini_get('zqfHB.auth')){
+        //$redis->connect(ini_get('zqfHB.host'),ini_get('zqfHB.port'));
+        $redis->connect("192.168.102.163",6379);
+        /*if(ini_get('zqfHB.auth')){
         	$redis->auth(ini_get('zqfHB.auth'));
-        }
+        }*/
+        $redis->auth('1234qwe');
         $zqfHB_idx = $redis->lrange('zqfHB',0,-1);
         foreach ($zqfHB_idx as $k => $v) {
             if($v){
@@ -15,21 +17,21 @@ switch ($type) {
                 $data[ $slowlog['filename'] ][] = $slowlog;
             } 
         }
-        break;
-    case 2:
-        $memcache = new Memcache();
-        $memcache->connect(ini_get('zqfHB.host'),ini_get('zqfHB.port'));
-        $zqfHB_idx = $memcache->get('zqfHB_idx');
-        for($i = 1; $i < $zqfHB_idx; $i++){
-            $idx = "zqfHB_{$i}";
-            $slowlog = unserialize($memcache->get($idx));
-            $data[ $slowlog['filename'] ][] = $slowlog;
-        }
-        break;
-    default:
-        echo 'not installed zqfHB extension,please install https://github.com/qieangel2013/zqfHB\r\n';
-        break;
-}
+        //break;
+    //case 2:
+    //    $memcache = new Memcache();
+    //    $memcache->connect(ini_get('zqfHB.host'),ini_get('zqfHB.port'));
+    //    $zqfHB_idx = $memcache->get('zqfHB_idx');
+    //    for($i = 1; $i < $zqfHB_idx; $i++){
+    //        $idx = "zqfHB_{$i}";
+    //        $slowlog = unserialize($memcache->get($idx));
+    //        $data[ $slowlog['filename'] ][] = $slowlog;
+    //    }
+    //    break;
+    //default:
+    //   echo 'not installed zqfHB extension,please install https://github.com/qieangel2013/zqfHB\r\n';
+     //   break;
+//}
 if($data){
     $total_duration = 0;
 
@@ -59,6 +61,7 @@ if($data){
 <!doctype html>
 <html>
 <head>
+<meta charset="utf-8">
 <script src="js/jquery-1.8.0.min.js" type="text/javascript"></script>
 <script src="js/highcharts.js"></script>
 <script src="js/modules/exporting.js"></script>
