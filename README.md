@@ -32,14 +32,14 @@
 	zqfHB.auth=123456(如果redis没有密码，此项不必配置，如果有密码，必须配置此项)
 	zqfHB.host=192.168.102.163
 	zqfHB.port=6379
-###use:
+### use:
 	把web里的所有文件复制到网站目录下或者放在其他目录下
 	直接执行http://localhost/web/
-###效果图
+### 效果图
 ![](https://github.com/qieangel2013/zqfHB/blob/master/images/img1.png)
 ![](https://github.com/qieangel2013/zqfHB/blob/master/images/img2.png)
-###交流使用
+### 交流使用
 	交流群：337937322
-###如果你对我的辛勤劳动给予肯定，请给我捐赠，你的捐赠是我最大的动力
+### 如果你对我的辛勤劳动给予肯定，请给我捐赠，你的捐赠是我最大的动力
 ![](https://github.com/qieangel2013/zys/blob/master/public/images/pay.png)
 [项目捐赠列表](https://github.com/qieangel2013/zys/wiki/%E9%A1%B9%E7%9B%AE%E6%8D%90%E8%B5%A0)
